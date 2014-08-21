@@ -1,0 +1,74 @@
+---
+title: "Practical Machine Learning Assignment"
+output: html_document
+---
+
+##Preprocessing the data
+First, we load the testing and training data.
+```{r}
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+```
+
+First, we'll separate the training data into two parts, one to build the model and the other to validate it, before we apply it on the test set.
+```{r}
+library(caret)
+set.seed(123456)
+trainset <- createDataPartition(train$classe, p = 0.8, list = FALSE)
+Training <- train[trainset, ]
+Validation <- train[-trainset, ]
+```
+
+Next the data needs to be cleaned up a bit to remove features with close to no variance and also features with lots of missing data.
+
+```{r}
+# exclude near zero variance features
+nzvcol <- nearZeroVar(Training)
+Training <- Training[, -nzvcol]
+
+# exclude columns with more more missing values exclude descriptive
+# columns like name etc
+cntlength <- sapply(Training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nullcol <- names(cntlength[cntlength < 0.6 * length(Training$classe)])
+descriptcol <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+    "cvtd_timestamp", "new_window", "num_window")
+excludecols <- c(descriptcol, nullcol)
+Training <- Training[, !names(Training) %in% excludecols]
+```
+##Create and test the model
+Next use Random Forest to build a model and then test it to find out how accurate it is.
+```{r}
+library(randomForest)
+##Build the model
+rfModel <- randomForest(classe ~ ., data = Training, importance = TRUE, ntrees = 10)
+
+##Test the model
+ptraining <- predict(rfModel, Training)
+print(confusionMatrix(ptraining, Training$classe))
+```
+This looks like it works really well, but to make sure we haven't ended up with an overfitted model, let's test it against the validation set.
+```{r}
+pvalidation <- predict(rfModel, Validation)
+print(confusionMatrix(pvalidation, Validation$classe))
+```
+This looks pretty good too, so our model seems valid.
+
+We will also run it against the test set and create the files for the submission part of this assignment.
+```{r}
+ptest <- predict(rfModel, test)
+ptest
+
+answers <- as.vector(ptest)
+
+pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename = paste0("problem_id_", i, ".txt")
+        write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, 
+            col.names = FALSE)
+    }
+}
+
+pml_write_files(answers)
